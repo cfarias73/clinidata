@@ -1,7 +1,34 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Save } from 'lucide-react-native';
+import { supabase } from '../lib/supabase';
+
+const formatDate = (dateString: string) => {
+  // Remover cualquier caracter que no sea número
+  const numbers = dateString.replace(/\D/g, '');
+  
+  // Verificar si tenemos 8 dígitos (DDMMYYYY)
+  if (numbers.length !== 8) {
+    return null;
+  }
+  
+  const day = numbers.substring(0, 2);
+  const month = numbers.substring(2, 4);
+  const year = numbers.substring(4, 8);
+  
+  // Validar día, mes y año
+  const dayNum = parseInt(day);
+  const monthNum = parseInt(month);
+  const yearNum = parseInt(year);
+  
+  if (dayNum < 1 || dayNum > 31 || monthNum < 1 || monthNum > 12 || yearNum < 1900 || yearNum > new Date().getFullYear()) {
+    return null;
+  }
+  
+  // Retornar en formato ISO (YYYY-MM-DD)
+  return `${year}-${month}-${day}`;
+};
 
 export default function NewPatientScreen() {
   const [form, setForm] = useState({
@@ -43,10 +70,74 @@ export default function NewPatientScreen() {
     prognosis: '',
   });
 
-  const handleSubmit = () => {
-    // En producción, guardar en backend
-    console.log('Form submitted:', form);
-    router.back();
+  const handleSubmit = async () => {
+    try {
+      // Validar campos requeridos
+      if (!form.fullName || !form.birthDate || !form.sex) {
+        Alert.alert('Error', 'Por favor complete los campos obligatorios: nombre, fecha de nacimiento y sexo.');
+        return;
+      }
+
+      // Validar y formatear la fecha
+      const formattedDate = formatDate(form.birthDate);
+      if (!formattedDate) {
+        Alert.alert('Error', 'Formato de fecha inválido. Use el formato DD/MM/YYYY');
+        return;
+      }
+
+      // Obtener el ID del doctor autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'No se pudo obtener la información del doctor.');
+        return;
+      }
+
+      // Crear el paciente en la base de datos
+      const { data: patient, error } = await supabase
+        .from('patients')
+        .insert([{
+          doctor_id: user.id,
+          full_name: form.fullName,
+          date_of_birth: formattedDate,
+          gender: form.sex,
+          address: form.address || '',
+          phone: form.phone || '',
+          email: form.email || '',
+          identification_number: form.idNumber || '',
+          civil_status: form.civilStatus || '',
+          nationality: form.nationality || '',
+          occupation: form.occupation || '',
+          consultation_reason: form.consultReason || 'Primera consulta',
+          pathological_history: form.pathologicalHistory || '',
+          family_history: form.familyHistory || '',
+          habits: form.habits || '',
+          current_medications: form.currentMedications || '',
+          allergies: form.allergies || '',
+          vital_signs: form.vitalSigns || {},
+          physical_examination: form.physicalExam || '',
+          lab_results: form.labResults || '',
+          diagnosis: form.diagnosis || '',
+          treatment_plan: form.treatment || '',
+          prognosis: form.prognosis || '',
+          created_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error detallado:', error);
+        throw error;
+      }
+
+      Alert.alert(
+        'Éxito',
+        'Paciente creado correctamente',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (error: any) {
+      console.error('Error al crear paciente:', error);
+      Alert.alert('Error', error.message || 'No se pudo crear el paciente. Por favor intente nuevamente.');
+    }
   };
 
   const renderSection = (title: string) => (

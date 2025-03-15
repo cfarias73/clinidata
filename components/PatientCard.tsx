@@ -1,21 +1,28 @@
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Link, router } from 'expo-router';
-import { Calendar, Activity } from 'lucide-react-native';
+import { Calendar, Activity, User } from 'lucide-react-native';
 
 type PatientCardProps = {
   id: string;
   name: string;
   age: number;
   lastVisit: string;
-  status: 'stable' | 'follow-up' | 'urgent';
-  imageUrl: string;
+  status: 'neutro' | 'estable' | 'seguimiento' | 'urgente';
 };
 
-export default function PatientCard({ id, name, age, lastVisit, status, imageUrl }: PatientCardProps) {
+export default function PatientCard({ id, name, age, lastVisit, status }: PatientCardProps) {
   const statusColors = {
-    stable: '#27AE60',
-    'follow-up': '#F2C94C',
-    urgent: '#EB5757',
+    neutro: '#666666',
+    estable: '#27AE60',
+    seguimiento: '#F2994A',
+    urgente: '#EB5757',
+  };
+
+  const statusText = {
+    neutro: 'Neutro',
+    estable: 'Estable',
+    seguimiento: 'Seguimiento',
+    urgente: 'Urgente',
   };
 
   const handlePress = () => {
@@ -27,10 +34,9 @@ export default function PatientCard({ id, name, age, lastVisit, status, imageUrl
 
   return (
     <Pressable style={styles.container} onPress={handlePress}>
-      <Image
-        source={{ uri: imageUrl }}
-        style={styles.image}
-      />
+      <View style={styles.avatarContainer}>
+        <User size={30} color="#666666" />
+      </View>
       <View style={styles.info}>
         <Text style={styles.name}>{name}</Text>
         <Text style={styles.age}>{age} años</Text>
@@ -42,7 +48,7 @@ export default function PatientCard({ id, name, age, lastVisit, status, imageUrl
           <View style={styles.detail}>
             <Activity size={16} color={statusColors[status]} />
             <Text style={[styles.detailText, { color: statusColors[status] }]}>
-              {status === 'stable' ? 'Estable' : status === 'follow-up' ? 'Seguimiento' : 'Urgente'}
+              {statusText[status]}
             </Text>
           </View>
         </View>
@@ -64,11 +70,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  image: {
+  avatarContainer: {
     width: 60,
     height: 60,
     borderRadius: 30,
     marginRight: 15,
+    backgroundColor: '#F2F2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   info: {
     flex: 1,

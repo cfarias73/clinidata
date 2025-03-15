@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Platform, Share, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Save, FileText, FileSpreadsheet, Upload, Share2 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Sharing from 'expo-sharing';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import * as FileSystem from 'expo-file-system';
+import { supabase, supabaseHelper } from '../../../lib/supabase';
 
 export default function NewVisitScreen() {
   const { id } = useLocalSearchParams();
@@ -26,31 +25,86 @@ export default function NewVisitScreen() {
     type: string;
   }>>([]);
 
-  const handleSubmit = () => {
-    // En producción, guardar en backend
-    console.log('New visit submitted:', form);
-    router.back();
+  const handleSubmit = async () => {
+    try {
+      // Validar campos requeridos
+      if (!form.type || !form.symptoms || !form.diagnosis) {
+        Alert.alert('Error', 'Por favor complete los campos obligatorios: tipo de consulta, síntomas y diagnóstico');
+        return;
+      }
+
+      // Obtener el doctor autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'No se pudo obtener la información del doctor');
+        return;
+      }
+
+      // Crear la consulta
+      const visitData = {
+        patient_id: id as string,
+        doctor_id: user.id,
+        visit_type: form.type,
+        symptoms: form.symptoms,
+        diagnosis: form.diagnosis,
+        treatment_plan: form.treatment || '',
+        notes: form.notes || '',
+        prescription: form.prescription || '',
+        lab_request: form.labRequest || '',
+        visit_date: new Date().toISOString(),
+        status: 'completed'
+      };
+
+      // Crear la visita directamente con Supabase
+      const { data: visit, error: visitError } = await supabase
+        .from('visits')
+        .insert([visitData])
+        .select()
+        .single();
+
+      if (visitError) {
+        console.error('Error al crear la visita:', visitError);
+        throw new Error('No se pudo crear la consulta');
+      }
+
+      if (!visit) {
+        throw new Error('No se pudo crear la consulta');
+      }
+
+      // Subir archivos adjuntos
+      if (uploadedFiles.length > 0) {
+        try {
+          for (const file of uploadedFiles) {
+            await supabaseHelper.uploadVisitFile(visit.id, id as string, file);
+          }
+        } catch (fileError: any) {
+          console.error('Error al subir archivos:', fileError);
+          Alert.alert('Advertencia', 'La consulta se guardó pero hubo problemas al subir algunos archivos');
+          router.back();
+          return;
+        }
+      }
+
+      Alert.alert('Éxito', 'Consulta guardada exitosamente', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error: any) {
+      console.error('Error completo:', error);
+      Alert.alert('Error', error.message || 'Error al guardar la consulta. Por favor intente nuevamente.');
+    }
   };
 
-  const generatePDF = async (type: 'prescription' | 'labRequest') => {
-    if (Platform.OS === 'web') {
-      const doc = new jsPDF();
-      const title = type === 'prescription' ? 'Receta Médica' : 'Solicitud de Estudios';
+  const handleShare = async (type: 'prescription' | 'labRequest') => {
+    try {
       const content = type === 'prescription' ? form.prescription : form.labRequest;
+      const title = type === 'prescription' ? 'Medicamentos' : 'Solicitud de Estudios';
       
-      doc.setFont('helvetica');
-      doc.setFontSize(16);
-      doc.text(title, 20, 20);
-      
-      doc.setFontSize(12);
-      doc.text('Fecha: ' + new Date().toLocaleDateString(), 20, 30);
-      
-      doc.setFontSize(12);
-      const contentLines = doc.splitTextToSize(content, 170);
-      doc.text(contentLines, 20, 50);
-      
-      // Guardar el PDF
-      doc.save(`${type === 'prescription' ? 'receta' : 'estudios'}.pdf`);
+      await Share.share({
+        message: `${title}\n\n${content}`,
+        title: title,
+      });
+    } catch (error) {
+      console.error('Error al compartir:', error);
     }
   };
 
@@ -62,7 +116,7 @@ export default function NewVisitScreen() {
 
       if (result.assets && result.assets[0]) {
         const file = result.assets[0];
-        setUploadedFiles([...uploadedFiles, {
+        setUploadedFiles(prev => [...prev, {
           name: file.name,
           uri: file.uri,
           type: file.mimeType || '',
@@ -70,6 +124,7 @@ export default function NewVisitScreen() {
       }
     } catch (err) {
       console.error('Error al subir documento:', err);
+      Alert.alert('Error', 'No se pudo seleccionar el documento');
     }
   };
 
@@ -78,15 +133,14 @@ export default function NewVisitScreen() {
     icon: JSX.Element,
     content: string,
     onChangeText: (text: string) => void,
-    onGenerate: () => void
+    onShare: () => void
   ) => (
     <View style={styles.documentSection}>
       <View style={styles.documentHeader}>
         {icon}
         <Text style={styles.documentTitle}>{title}</Text>
-        <Pressable style={styles.generateButton} onPress={onGenerate}>
+        <Pressable style={styles.shareButton} onPress={onShare}>
           <Share2 size={20} color="#FFFFFF" />
-          <Text style={styles.generateButtonText}>Generar PDF</Text>
         </Pressable>
       </View>
       <TextInput
@@ -160,11 +214,11 @@ export default function NewVisitScreen() {
         </View>
 
         {renderDocumentSection(
-          'Receta Médica',
+          'Medicamentos',
           <FileText size={24} color="#27AE60" />,
           form.prescription,
           (text) => setForm({ ...form, prescription: text }),
-          () => generatePDF('prescription')
+          () => handleShare('prescription')
         )}
 
         {renderDocumentSection(
@@ -172,7 +226,7 @@ export default function NewVisitScreen() {
           <FileSpreadsheet size={24} color="#2D9CDB" />,
           form.labRequest,
           (text) => setForm({ ...form, labRequest: text }),
-          () => generatePDF('labRequest')
+          () => handleShare('labRequest')
         )}
 
         <View style={styles.documentSection}>
@@ -283,19 +337,11 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
-  generateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  shareButton: {
     backgroundColor: '#2D9CDB',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    padding: 8,
     borderRadius: 8,
-    gap: 6,
-  },
-  generateButtonText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-    color: '#FFFFFF',
+    marginLeft: 'auto',
   },
   uploadButton: {
     backgroundColor: '#9B51E0',

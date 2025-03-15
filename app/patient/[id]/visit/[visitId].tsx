@@ -1,20 +1,64 @@
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, Calendar, FileText, Stethoscope, Pill, ClipboardList } from 'lucide-react-native';
-
-const DEMO_VISIT = {
-  date: '15 Mar 2024',
-  type: 'Consulta General',
-  symptoms: 'Paciente presenta fiebre alta (39°C), dolor de garganta y congestión nasal desde hace 2 días.',
-  diagnosis: 'Gripe estacional con posible infección viral de las vías respiratorias superiores.',
-  treatment: 'Se receta:\n- Paracetamol 500mg cada 8 horas\n- Ibuprofeno 400mg cada 8 horas\n- Reposo por 3 días\n- Abundante hidratación',
-  notes: 'Programar seguimiento en 5 días si los síntomas persisten. Realizar prueba de COVID-19 si la fiebre no cede en 48 horas.',
-};
+import { ChevronLeft, Calendar, FileText, Stethoscope, Pill, ClipboardList, FileSpreadsheet, Upload } from 'lucide-react-native';
+import { supabase, Visit } from '../../../../lib/supabase';
+import { formatDate } from '../../../../utils/date';
 
 export default function VisitDetailsScreen() {
   const { id, visitId } = useLocalSearchParams();
-  const visit = DEMO_VISIT;
+  const [loading, setLoading] = useState(true);
+  const [visit, setVisit] = useState<Visit | null>(null);
+  const [files, setFiles] = useState<Array<{ name: string }>>([]);
+
+  useEffect(() => {
+    loadVisitData();
+  }, [visitId]);
+
+  const loadVisitData = async () => {
+    try {
+      // Cargar datos de la visita
+      const { data: visitData, error: visitError } = await supabase
+        .from('visits')
+        .select('*')
+        .eq('id', visitId)
+        .single();
+
+      if (visitError) throw visitError;
+      setVisit(visitData);
+
+      // Cargar archivos adjuntos
+      const { data: filesData, error: filesError } = await supabase.storage
+        .from('visit_files')
+        .list(`${id}/${visitId}`);
+
+      if (!filesError && filesData) {
+        setFiles(filesData);
+      }
+    } catch (error) {
+      console.error('Error al cargar datos de la visita:', error);
+      Alert.alert('Error', 'No se pudieron cargar los datos de la consulta');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2D9CDB" />
+      </View>
+    );
+  }
+
+  if (!visit) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>No se encontró la consulta</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -29,9 +73,9 @@ export default function VisitDetailsScreen() {
         <View style={styles.visitHeader}>
           <View style={styles.visitDate}>
             <Calendar size={20} color="#2D9CDB" />
-            <Text style={styles.dateText}>{visit.date}</Text>
+            <Text style={styles.dateText}>{formatDate(visit.visit_date)}</Text>
           </View>
-          <Text style={styles.visitType}>{visit.type}</Text>
+          <Text style={styles.visitType}>{visit.visit_type}</Text>
         </View>
 
         <View style={styles.section}>
@@ -50,21 +94,60 @@ export default function VisitDetailsScreen() {
           <Text style={styles.sectionText}>{visit.diagnosis}</Text>
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Pill size={20} color="#666666" />
-            <Text style={styles.sectionTitle}>Tratamiento</Text>
+        {visit.treatment_plan && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Pill size={20} color="#666666" />
+              <Text style={styles.sectionTitle}>Tratamiento</Text>
+            </View>
+            <Text style={styles.sectionText}>{visit.treatment_plan}</Text>
           </View>
-          <Text style={styles.sectionText}>{visit.treatment}</Text>
-        </View>
+        )}
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <ClipboardList size={20} color="#666666" />
-            <Text style={styles.sectionTitle}>Notas Adicionales</Text>
+        {visit.prescription && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <FileText size={20} color="#27AE60" />
+              <Text style={styles.sectionTitle}>Medicamentos</Text>
+            </View>
+            <Text style={styles.sectionText}>{visit.prescription}</Text>
           </View>
-          <Text style={styles.sectionText}>{visit.notes}</Text>
-        </View>
+        )}
+
+        {visit.lab_request && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <FileSpreadsheet size={20} color="#2D9CDB" />
+              <Text style={styles.sectionTitle}>Solicitud de Estudios</Text>
+            </View>
+            <Text style={styles.sectionText}>{visit.lab_request}</Text>
+          </View>
+        )}
+
+        {files.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Upload size={20} color="#9B51E0" />
+              <Text style={styles.sectionTitle}>Documentos Adjuntos</Text>
+            </View>
+            {files.map((file, index) => (
+              <View key={index} style={styles.fileItem}>
+                <FileText size={20} color="#666666" />
+                <Text style={styles.fileName}>{file.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {visit.notes && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <ClipboardList size={20} color="#666666" />
+              <Text style={styles.sectionTitle}>Notas Adicionales</Text>
+            </View>
+            <Text style={styles.sectionText}>{visit.notes}</Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -74,6 +157,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  errorText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: '#666666',
   },
   header: {
     flexDirection: 'row',
@@ -136,5 +230,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#666666',
     lineHeight: 22,
+  },
+  fileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  fileName: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 12,
   },
 });
