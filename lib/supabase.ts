@@ -90,13 +90,23 @@ export const supabaseHelper = {
   },
 
   async signIn(credentials: SignInData) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: credentials.email,
-      password: credentials.password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        if (error.message.includes('network')) {
+          throw new Error('Error de conexión. Por favor verifica tu conexión a internet.');
+        }
+        throw error;
+      }
+      return data;
+    } catch (error: any) {
+      console.error('SignIn error:', error);
+      throw error;
+    }
   },
 
   async signOut() {
@@ -231,4 +241,4 @@ export const supabaseHelper = {
       throw error;
     }
   }
-}; 
+};

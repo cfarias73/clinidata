@@ -13,10 +13,20 @@ export default function Index() {
 
   async function checkAuth() {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        if (error.message.includes('network')) {
+          console.error('Network error during auth check');
+          // Retry after a short delay
+          setTimeout(checkAuth, 3000);
+          return;
+        }
+        throw error;
+      }
       setIsAuthenticated(!!session);
     } catch (error) {
       console.error('Error checking auth:', error);
+      setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
     }

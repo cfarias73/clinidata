@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { supabaseHelper } from '../../lib/supabase';
 import { router } from 'expo-router';
 
 export default function AuthScreen() {
+  const [isLoading, setIsLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [isRecovery, setIsRecovery] = useState(false);
   const [formData, setFormData] = useState({
@@ -13,6 +14,7 @@ export default function AuthScreen() {
   });
 
   const handleAuth = async () => {
+    setIsLoading(true);
     try {
       if (isRecovery) {
         // Handle password recovery
@@ -58,8 +60,24 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       Alert.alert('Error', error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const renderButton = (text: string) => (
+    <TouchableOpacity 
+      style={styles.button} 
+      onPress={handleAuth}
+      disabled={isLoading}
+    >
+      {isLoading ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <Text style={styles.buttonText}>{text}</Text>
+      )}
+    </TouchableOpacity>
+  );
 
   if (isRecovery) {
     return (
@@ -74,11 +92,10 @@ export default function AuthScreen() {
             onChangeText={(text) => setFormData({ ...formData, email: text })}
             keyboardType="email-address"
             autoCapitalize="none"
+            editable={!isLoading}
           />
 
-          <TouchableOpacity style={styles.button} onPress={handleAuth}>
-            <Text style={styles.buttonText}>Enviar Instrucciones</Text>
-          </TouchableOpacity>
+          {renderButton('Enviar Instrucciones')}
 
           <TouchableOpacity
             style={styles.switchButton}
@@ -86,6 +103,7 @@ export default function AuthScreen() {
               setIsRecovery(false);
               setFormData({ ...formData, email: '' });
             }}
+            disabled={isLoading}
           >
             <Text style={styles.switchButtonText}>Volver al inicio de sesión</Text>
           </TouchableOpacity>
@@ -106,6 +124,7 @@ export default function AuthScreen() {
           onChangeText={(text) => setFormData({ ...formData, email: text })}
           keyboardType="email-address"
           autoCapitalize="none"
+          editable={!isLoading}
         />
 
         <TextInput
@@ -114,6 +133,7 @@ export default function AuthScreen() {
           value={formData.password}
           onChangeText={(text) => setFormData({ ...formData, password: text })}
           secureTextEntry
+          editable={!isLoading}
         />
 
         {!isLogin && (
@@ -122,14 +142,11 @@ export default function AuthScreen() {
             placeholder="Nombre completo"
             value={formData.full_name}
             onChangeText={(text) => setFormData({ ...formData, full_name: text })}
+            editable={!isLoading}
           />
         )}
 
-        <TouchableOpacity style={styles.button} onPress={handleAuth}>
-          <Text style={styles.buttonText}>
-            {isLogin ? 'Iniciar Sesión' : 'Registrarse'}
-          </Text>
-        </TouchableOpacity>
+        {renderButton(isLogin ? 'Iniciar Sesión' : 'Registrarse')}
 
         <TouchableOpacity
           style={styles.switchButton}
@@ -137,6 +154,7 @@ export default function AuthScreen() {
             setIsLogin(!isLogin);
             setFormData({ email: '', password: '', full_name: '' });
           }}
+          disabled={isLoading}
         >
           <Text style={styles.switchButtonText}>
             {isLogin
@@ -152,6 +170,7 @@ export default function AuthScreen() {
               setIsRecovery(true);
               setFormData({ ...formData, password: '' });
             }}
+            disabled={isLoading}
           >
             <Text style={styles.recoveryButtonText}>¿Olvidaste tu contraseña?</Text>
           </TouchableOpacity>
@@ -221,4 +240,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
   },
-}); 
+});
